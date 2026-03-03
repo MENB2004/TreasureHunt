@@ -298,6 +298,45 @@ exports.getEventStatus = async (req, res) => {
     }
 };
 
+// RESET ALL TEAMS (restart the game from scratch)
+exports.resetAllTeams = async (req, res) => {
+    try {
+        // Reset every team to clean waiting state
+        await Team.updateMany({}, {
+            $set: {
+                clueSequence: [],
+                physicalSet: [],
+                technicalSet: [],
+                currentPhase: "waiting",
+                currentIndex: 0,
+                startTime: null,
+                finishTime: null,
+                totalTime: null,
+                wrongAttempts: 0,
+                locationLogs: [],
+                lockedUntil: null,
+            }
+        });
+
+        // Clear game flags in EventConfig
+        let config = await EventConfig.findOne();
+        if (!config) config = new EventConfig();
+        config.gameStarted = false;
+        config.gameStartTime = null;
+        config.isPaused = false;
+        await config.save();
+
+        const io = req.app.get("io");
+        io.emit("monitorUpdate");
+        io.emit("leaderboardUpdate");
+        io.emit("gameReset"); // teams listening can redirect to waiting screen
+
+        res.json({ message: "Game reset. All teams returned to waiting state." });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // MAP TRACKING DATA
 exports.getMapData = async (req, res) => {
     try {

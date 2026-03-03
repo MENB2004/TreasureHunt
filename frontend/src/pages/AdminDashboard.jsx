@@ -439,6 +439,8 @@ function AdminDashboard() {
     const [gameStartTime, setGameStartTime] = useState(null);
     const [timeLimitMs, setTimeLimitMs] = useState(null);
     const [starting, setStarting] = useState(false);
+    const [restarting, setRestarting] = useState(false);
+    const [confirmRestart, setConfirmRestart] = useState(false);
     const [flash, setFlash] = useState("");
     const timerRef = useRef(null);
     const remaining = useCountdown(gameStartTime, timeLimitMs);
@@ -497,6 +499,24 @@ function AdminDashboard() {
             showFlash(err.response?.data?.message || "Failed to start game ✗");
         } finally {
             setStarting(false);
+        }
+    };
+
+    const restartGame = async () => {
+        setConfirmRestart(false);
+        setRestarting(true);
+        try {
+            const r = await API.post("/admin/reset-all", {});
+            setGameStarted(false);
+            setGameStartTime(null);
+            setTimeLimitMs(null);
+            setPaused(false);
+            showFlash(`🔄 ${r.data.message}`);
+            loadTeams();
+        } catch (err) {
+            showFlash(err.response?.data?.message || "Failed to restart game ✗");
+        } finally {
+            setRestarting(false);
         }
     };
 
@@ -566,8 +586,8 @@ function AdminDashboard() {
                             alignItems: "center",
                             padding: "6px 14px",
                             border: `1px solid ${remaining === 0 ? "#ff0000" :
-                                    remaining / timeLimitMs > 0.25 ? "rgba(0,204,68,0.4)" :
-                                        remaining / timeLimitMs > 0.1 ? "rgba(255,204,0,0.4)" : "rgba(255,0,0,0.6)"
+                                remaining / timeLimitMs > 0.25 ? "rgba(0,204,68,0.4)" :
+                                    remaining / timeLimitMs > 0.1 ? "rgba(255,204,0,0.4)" : "rgba(255,0,0,0.6)"
                                 }`,
                             borderRadius: 4,
                             background: "rgba(0,0,0,0.3)",
@@ -591,6 +611,23 @@ function AdminDashboard() {
                     <button className={`admin-btn ${eventPaused ? "success" : "danger"}`} onClick={toggleEvent}>
                         {eventPaused ? "▶ RESUME" : "⏸ PAUSE"}
                     </button>
+                    {/* ── RESTART GAME button — always visible after game started ── */}
+                    {gameStarted && (
+                        <button
+                            className="admin-btn danger"
+                            style={{
+                                background: restarting ? "#1a0000" : "rgba(180,0,0,0.12)",
+                                border: "1px solid #cc0000",
+                                color: restarting ? "#660000" : "#ff4444",
+                                minWidth: 130,
+                                fontWeight: "bold",
+                            }}
+                            onClick={() => setConfirmRestart(true)}
+                            disabled={restarting}
+                        >
+                            {restarting ? "RESTARTING..." : "🔄 RESTART GAME"}
+                        </button>
+                    )}
                     <a href="/leaderboard" className="admin-btn" style={{ textDecoration: "none", display: "flex", alignItems: "center" }}>LEADERBOARD</a>
                     <button className="admin-btn danger" onClick={logout}>LOGOUT</button>
                 </div>
@@ -615,6 +652,29 @@ function AdminDashboard() {
             {/* Tab content */}
             {tab === "teams" && <TeamsTab teams={teams} onRefresh={loadTeams} onFlash={showFlash} />}
             {tab === "clues" && <CluesTab onFlash={showFlash} />}
+
+            {/* ── RESTART GAME confirmation modal ── */}
+            {confirmRestart && (
+                <div className="modal-overlay" onClick={() => setConfirmRestart(false)}>
+                    <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, textAlign: "center" }}>
+                        <div style={{ fontSize: 44, marginBottom: 12 }}>⚠️</div>
+                        <div className="modal-title" style={{ fontSize: 22 }}>RESTART GAME?</div>
+                        <p style={{ color: "#888", fontSize: 13, letterSpacing: 1, lineHeight: 1.7, marginBottom: 24 }}>
+                            This will <strong style={{ color: "#ff4444" }}>wipe all team progress</strong> — clue sequences, timers, scores, and locations will be cleared.<br />
+                            Teams will return to the <strong style={{ color: "#ffcc00" }}>waiting screen</strong>.<br /><br />
+                            This <strong style={{ color: "#ff4444" }}>cannot be undone</strong>.
+                        </p>
+                        <div className="modal-actions" style={{ justifyContent: "center" }}>
+                            <button className="modal-btn cancel" onClick={() => setConfirmRestart(false)}>
+                                ✕ CANCEL
+                            </button>
+                            <button className="modal-btn confirm-red" onClick={restartGame}>
+                                🔄 YES, RESTART
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -14,6 +14,7 @@ const {
     getMapData,
     startAllTeams,
     getEventStatus,
+    resetAllTeams,
     // Team CRUD
     createTeam,
     getTeam,
@@ -52,6 +53,7 @@ router.post("/advance/:teamId", protectAdmin, advanceTeam);
 router.post("/pause", protectAdmin, pauseEvent);
 router.post("/resume", protectAdmin, resumeEvent);
 router.post("/start-all", protectAdmin, startAllTeams);
+router.post("/reset-all", protectAdmin, resetAllTeams);
 
 // ── Monitor & Map ─────────────────────────────────────────────────────────
 router.get("/monitor", protectAdmin, getLiveMonitor);
