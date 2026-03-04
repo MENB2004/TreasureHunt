@@ -1,11 +1,29 @@
 const Clue = require("../models/Clue");
 const QRCode = require("qrcode");
+const path = require("path");
 
 // ───────────────────────────────────────────────────────────────────────────
 // Determine the frontend base URL for QR encoding.
 // Priority: FRONTEND_URL env var → fallback to localhost for dev.
 // ───────────────────────────────────────────────────────────────────────────
 const FRONTEND_BASE = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+
+// ── UPLOAD MEDIA FILE for a clue (admin only) ─────────────────────────────
+// Accepts a multipart file, saves it to /uploads, returns the public URL.
+exports.uploadClueMedia = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "No file uploaded" });
+        }
+        // Derive the backend base URL from the request
+        const backendBase = process.env.BACKEND_URL
+            || `${req.protocol}://${req.get("host")}`;
+        const fileUrl = `${backendBase}/uploads/${req.file.filename}`;
+        res.json({ url: fileUrl, filename: req.file.filename });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
 
 // GET ALL CLUES
 exports.getAllClues = async (req, res) => {

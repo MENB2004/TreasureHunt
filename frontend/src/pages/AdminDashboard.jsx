@@ -145,8 +145,53 @@ function ClueFormModal({ clue, onClose, onSaved }) {
     const [form, setForm] = useState(clue ? { ...clue } : blank);
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState("");
+    // Media source mode: "url" or "file"
+    const [mediaSrc, setMSrc] = useState("url");
+    const [uploading, setUping] = useState(false);
+    const [uploadErr, setUErr] = useState("");
+    const [uploadName, setUName] = useState("");
 
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+    /* Upload a local file to the backend, get back a URL */
+    const handleFileChange = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUping(true); setUErr(""); setUName(file.name);
+        try {
+            const data = new FormData();
+            data.append("file", file);
+            const adminToken = localStorage.getItem("adminToken");
+            const apiBase = import.meta.env.VITE_API_URL
+                ? `${import.meta.env.VITE_API_URL}/api`
+                : "http://localhost:5000/api";
+            const res = await fetch(`${apiBase}/admin/clues/upload-media`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${adminToken}` },
+                body: data,
+            });
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j.message || `Upload failed (${res.status})`);
+            }
+            const { url } = await res.json();
+            set("mediaUrl", url);
+        } catch (ex) {
+            setUErr(ex.message);
+        } finally {
+            setUping(false);
+        }
+    };
+
+    /* Tab button style helper */
+    const tabStyle = (active) => ({
+        flex: 1, padding: "6px 0", fontSize: 11, letterSpacing: 2,
+        background: active ? "rgba(255,0,0,0.12)" : "transparent",
+        border: "1px solid",
+        borderColor: active ? "rgba(255,0,0,0.5)" : "rgba(255,255,255,0.08)",
+        color: active ? "#ff4444" : "#444",
+        cursor: "pointer", borderRadius: 4, transition: "all .15s",
+    });
 
     const submit = async (e) => {
         e.preventDefault();
@@ -234,15 +279,60 @@ function ClueFormModal({ clue, onClose, onSaved }) {
                         </div>
                         {form.mediaType && form.mediaType !== "none" && (
                             <div className="form-group">
-                                <label className="form-label">Media URL</label>
-                                <input
-                                    className="form-input"
-                                    type="url"
-                                    placeholder="https://example.com/clue-image.jpg"
-                                    value={form.mediaUrl || ""}
-                                    onChange={e => set("mediaUrl", e.target.value)}
-                                    autoComplete="off"
-                                />
+                                {/* URL / Upload toggle tabs */}
+                                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                                    <button type="button" style={tabStyle(mediaSrc === "url")}
+                                        onClick={() => setMSrc("url")}>🔗 PASTE URL</button>
+                                    <button type="button" style={tabStyle(mediaSrc === "file")}
+                                        onClick={() => setMSrc("file")}>📁 UPLOAD FILE</button>
+                                </div>
+
+                                {mediaSrc === "url" ? (
+                                    /* URL input */
+                                    <input
+                                        className="form-input"
+                                        type="url"
+                                        placeholder="https://example.com/clue-image.jpg"
+                                        value={form.mediaUrl || ""}
+                                        onChange={e => set("mediaUrl", e.target.value)}
+                                        autoComplete="off"
+                                    />
+                                ) : (
+                                    /* File upload drop zone */
+                                    <div>
+                                        <label style={{
+                                            display: "flex", flexDirection: "column", alignItems: "center",
+                                            gap: 8, padding: "18px 12px",
+                                            border: "2px dashed rgba(255,0,0,0.3)", borderRadius: 8,
+                                            cursor: uploading ? "not-allowed" : "pointer",
+                                            background: "rgba(255,0,0,0.02)", transition: "border-color .2s",
+                                        }}
+                                            onMouseEnter={e => { if (!uploading) e.currentTarget.style.borderColor = "rgba(255,0,0,0.6)"; }}
+                                            onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,0,0,0.3)"; }}
+                                        >
+                                            <span style={{ fontSize: 28 }}>
+                                                {form.mediaType === "image" ? "🖼" : form.mediaType === "audio" ? "🎵" : "🎬"}
+                                            </span>
+                                            <span style={{ fontSize: 12, letterSpacing: 2, color: "#555" }}>
+                                                {uploading ? "UPLOADING\u2026" : uploadName || "CLICK TO CHOOSE FILE"}
+                                            </span>
+                                            <span style={{ fontSize: 10, color: "#333", letterSpacing: 1 }}>
+                                                {form.mediaType === "image" ? "JPG, PNG, GIF, WebP" :
+                                                    form.mediaType === "audio" ? "MP3, WAV, OGG" : "MP4, WebM, OGG"} · max 100 MB
+                                            </span>
+                                            <input type="file"
+                                                accept={form.mediaType === "image" ? "image/*" : form.mediaType === "audio" ? "audio/*" : "video/*"}
+                                                style={{ display: "none" }}
+                                                onChange={handleFileChange}
+                                                disabled={uploading}
+                                            />
+                                        </label>
+                                        {uploading && <p style={{ fontSize: 11, color: "#ff8800", letterSpacing: 2, marginTop: 6, textAlign: "center", animation: "pulse 1s infinite" }}>⏳ Uploading to server\u2026</p>}
+                                        {uploadErr && <p style={{ fontSize: 12, color: "#ff4444", marginTop: 6 }}>✗ {uploadErr}</p>}
+                                        {form.mediaUrl && !uploadErr && !uploading && <p style={{ fontSize: 11, color: "#00cc44", letterSpacing: 1, marginTop: 6 }}>✓ File uploaded successfully</p>}
+                                    </div>
+                                )}
+
                                 <MediaPreview />
                             </div>
                         )}
@@ -251,7 +341,7 @@ function ClueFormModal({ clue, onClose, onSaved }) {
                     {err && <p style={{ color: "#ff4444", fontSize: 13 }}>{err}</p>}
                     <div className="modal-actions">
                         <button type="button" className="modal-btn cancel" onClick={onClose}>CANCEL</button>
-                        <button type="submit" className="modal-btn" disabled={saving}>{saving ? "SAVING..." : "SAVE CLUE"}</button>
+                        <button type="submit" className="modal-btn" disabled={saving || uploading}>{saving ? "SAVING..." : "SAVE CLUE"}</button>
                     </div>
                 </form>
             </div>

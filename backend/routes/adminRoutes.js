@@ -29,7 +29,10 @@ const {
     updateClue,
     deleteClue,
     generateClueQR,
+    uploadClueMedia,
 } = require("../controllers/clueController");
+
+const upload = require("../middleware/uploadMiddleware");
 
 const protectAdmin = require("../middleware/adminMiddleware");
 
@@ -68,5 +71,7 @@ router.put("/clues/:clueId", protectAdmin, updateClue);
 router.delete("/clues/:clueId", protectAdmin, deleteClue);
 // Returns a QR code PNG whose data encodes the frontend scan URL for the clue
 router.get("/clues/:clueId/qr", protectAdmin, generateClueQR);
+// Upload a local media file; returns { url } pointing at /uploads/<filename>
+router.post("/clues/upload-media", protectAdmin, upload.single("file"), uploadClueMedia);
 
 module.exports = router;

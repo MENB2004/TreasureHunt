@@ -51,3 +51,6 @@ coverage/
 
 # ── Misc ──────────────────────────────────────────────
 *.local
+
+# ── Uploaded media files (local dev) ──────────────────
+backend/uploads/
