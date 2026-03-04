@@ -137,7 +137,11 @@ function ConfirmModal({ title, message, onConfirm, onClose }) {
 
 /* ─── MODAL: Add / Edit Clue ──────────────────────────────── */
 function ClueFormModal({ clue, onClose, onSaved }) {
-    const blank = { type: "physical", question: "", answer: "", hint: "", difficulty: 1, qrToken: "", latitude: "", longitude: "", penalty: 0 };
+    const blank = {
+        type: "physical", question: "", answer: "", hint: "",
+        difficulty: 1, qrToken: "", latitude: "", longitude: "", penalty: 0,
+        mediaType: "none", mediaUrl: "",
+    };
     const [form, setForm] = useState(clue ? { ...clue } : blank);
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState("");
@@ -149,9 +153,11 @@ function ClueFormModal({ clue, onClose, onSaved }) {
         setSaving(true); setErr("");
         try {
             const payload = {
-                ...form, difficulty: Number(form.difficulty), penalty: Number(form.penalty),
+                ...form,
+                difficulty: Number(form.difficulty),
+                penalty: Number(form.penalty),
                 latitude: form.latitude ? Number(form.latitude) : null,
-                longitude: form.longitude ? Number(form.longitude) : null
+                longitude: form.longitude ? Number(form.longitude) : null,
             };
             if (clue) {
                 await API.put(`/admin/clues/${clue._id}`, payload);
@@ -174,9 +180,19 @@ function ClueFormModal({ clue, onClose, onSaved }) {
         </div>
     );
 
+    /* Live preview of the attached media */
+    const MediaPreview = () => {
+        if (!form.mediaUrl || form.mediaType === "none") return null;
+        const style = { width: "100%", maxHeight: 160, borderRadius: 6, marginTop: 8, border: "1px solid rgba(255,0,0,0.2)" };
+        if (form.mediaType === "image") return <img src={form.mediaUrl} alt="preview" style={style} onError={e => e.target.style.display = "none"} />;
+        if (form.mediaType === "audio") return <audio controls src={form.mediaUrl} style={{ width: "100%", marginTop: 8 }} />;
+        if (form.mediaType === "video") return <video controls src={form.mediaUrl} style={style} />;
+        return null;
+    };
+
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-box" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-box" style={{ maxWidth: 580, maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
                 <button className="modal-close" onClick={onClose}>✕</button>
                 <div className="modal-title">{clue ? "EDIT CLUE" : "ADD CLUE"}</div>
 
@@ -204,12 +220,119 @@ function ClueFormModal({ clue, onClose, onSaved }) {
                         {field("Longitude", "longitude", "number", "0.000000")}
                     </div>
 
+                    {/* ── Media Clue Section ── */}
+                    <div style={{ borderTop: "1px solid rgba(255,0,0,0.15)", paddingTop: 16, marginTop: 4 }}>
+                        <div style={{ fontSize: 11, letterSpacing: 3, color: "#550000", marginBottom: 12 }}>— MEDIA CLUE (OPTIONAL) —</div>
+                        <div className="form-group">
+                            <label className="form-label">Media Type</label>
+                            <select className="form-input" value={form.mediaType || "none"} onChange={e => set("mediaType", e.target.value)}>
+                                <option value="none">None (text only)</option>
+                                <option value="image">🖼 Image</option>
+                                <option value="audio">🎵 Audio</option>
+                                <option value="video">🎬 Video</option>
+                            </select>
+                        </div>
+                        {form.mediaType && form.mediaType !== "none" && (
+                            <div className="form-group">
+                                <label className="form-label">Media URL</label>
+                                <input
+                                    className="form-input"
+                                    type="url"
+                                    placeholder="https://example.com/clue-image.jpg"
+                                    value={form.mediaUrl || ""}
+                                    onChange={e => set("mediaUrl", e.target.value)}
+                                    autoComplete="off"
+                                />
+                                <MediaPreview />
+                            </div>
+                        )}
+                    </div>
+
                     {err && <p style={{ color: "#ff4444", fontSize: 13 }}>{err}</p>}
                     <div className="modal-actions">
                         <button type="button" className="modal-btn cancel" onClick={onClose}>CANCEL</button>
                         <button type="submit" className="modal-btn" disabled={saving}>{saving ? "SAVING..." : "SAVE CLUE"}</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    );
+}
+
+/* ─── MODAL: View QR Code for a Clue ──────────────────────── */
+function QRModal({ clue, onClose }) {
+    const [src, setSrc] = useState(null);
+    const [err, setErr] = useState("");
+    const [loading, setLd] = useState(true);
+
+    useEffect(() => {
+        if (!clue) return;
+        const token = localStorage.getItem("adminToken");
+        const apiBase = import.meta.env.VITE_API_URL
+            ? `${import.meta.env.VITE_API_URL}/api`
+            : "http://localhost:5000/api";
+        fetch(`${apiBase}/admin/clues/${clue._id}/qr`, {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+            .then(async r => {
+                if (!r.ok) {
+                    const j = await r.json().catch(() => ({}));
+                    throw new Error(j.message || `HTTP ${r.status}`);
+                }
+                const blob = await r.blob();
+                setSrc(URL.createObjectURL(blob));
+            })
+            .catch(e => setErr(e.message))
+            .finally(() => setLd(false));
+    }, [clue]);
+
+    const download = () => {
+        if (!src) return;
+        const a = document.createElement("a");
+        a.href = src;
+        a.download = `qr-${clue.qrToken || clue._id}.png`;
+        a.click();
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-box" style={{ maxWidth: 460, textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                <button className="modal-close" onClick={onClose}>✕</button>
+                <div className="modal-title">QR CODE</div>
+                <p style={{ color: "#555", fontSize: 12, letterSpacing: 2, marginBottom: 16 }}>
+                    {clue.qrToken ? `TOKEN: ${clue.qrToken}` : "No qrToken set on this clue"}
+                </p>
+
+                {loading && <p className="text-dim">Generating QR…</p>}
+                {err && (
+                    <p style={{ color: "#ff4444", fontSize: 13 }}>
+                        ✗ {err}
+                        {err.includes("no QR token") && " — Set a qrToken in Edit Clue first."}
+                    </p>
+                )}
+                {src && (
+                    <>
+                        <img
+                            src={src}
+                            alt="QR Code"
+                            style={{
+                                width: 280, height: 280,
+                                border: "2px solid rgba(255,0,0,0.4)",
+                                borderRadius: 8,
+                                boxShadow: "0 0 30px rgba(255,0,0,0.2)",
+                                display: "block",
+                                margin: "0 auto 20px",
+                            }}
+                        />
+                        <p style={{ color: "#444", fontSize: 11, letterSpacing: 2, marginBottom: 16 }}>
+                            Scan with phone → auto-reveals answer on the website
+                        </p>
+                        <div className="modal-actions" style={{ justifyContent: "center" }}>
+                            <button className="modal-btn" onClick={download}>⬇ DOWNLOAD PNG</button>
+                            <button className="modal-btn cancel" onClick={() => window.print()}>🖨 PRINT</button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );
@@ -360,6 +483,7 @@ function CluesTab({ onFlash }) {
                                         <th>Question</th>
                                         <th>{showAnswers ? "Answer" : "Answer ●"}</th>
                                         <th>QR Token</th>
+                                        <th>Media</th>
                                         <th>Diff</th>
                                         <th>Hint</th>
                                         <th>Actions</th>
@@ -377,9 +501,14 @@ function CluesTab({ onFlash }) {
                                                 }
                                             </td>
                                             <td style={{ fontSize: 11, color: "#666", maxWidth: 120, wordBreak: "break-all" }}>{c.qrToken || "—"}</td>
+                                            <td style={{ textAlign: "center", fontSize: 14 }}>
+                                                {c.mediaType === "image" ? "🖼" : c.mediaType === "audio" ? "🎵" : c.mediaType === "video" ? "🎬" : <span style={{ color: "#333" }}>—</span>}
+                                            </td>
                                             <td style={{ color: "#ff8800", textAlign: "center" }}>{c.difficulty || 1}</td>
                                             <td style={{ fontSize: 12, color: "#555", maxWidth: 120 }}>{c.hint || "—"}</td>
-                                            <td>
+                                            <td style={{ whiteSpace: "nowrap" }}>
+                                                <button className="icon-btn" style={{ borderColor: "rgba(0,180,255,0.4)", color: "#00bbff" }}
+                                                    onClick={() => setModal({ type: "qr", clue: c })} title="View/Download QR code">QR</button>
                                                 <button className="icon-btn orange" onClick={() => setModal({ type: "edit", clue: c })}>EDIT</button>
                                                 <button className="icon-btn" onClick={() => setModal({ type: "delete", clue: c })}>DEL</button>
                                             </td>
@@ -396,6 +525,7 @@ function CluesTab({ onFlash }) {
 
             {modal?.type === "add" && <ClueFormModal onClose={close} onSaved={saved} />}
             {modal?.type === "edit" && <ClueFormModal clue={modal.clue} onClose={close} onSaved={saved} />}
+            {modal?.type === "qr" && <QRModal clue={modal.clue} onClose={close} />}
             {modal?.type === "delete" && (
                 <ConfirmModal
                     title="DELETE CLUE"

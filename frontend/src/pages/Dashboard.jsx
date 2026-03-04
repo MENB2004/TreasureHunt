@@ -335,6 +335,62 @@ function Dashboard() {
                         </p>
                     )}
 
+                    {/* ── Media clue (image / audio / video) ── */}
+                    {team.currentClue?.mediaType && team.currentClue.mediaType !== "none" && team.currentClue?.mediaUrl && (() => {
+                        const mt = team.currentClue.mediaType;
+                        const mu = team.currentClue.mediaUrl;
+                        const wrapStyle = {
+                            marginTop: 18,
+                            borderTop: "1px solid rgba(255,0,0,0.1)",
+                            paddingTop: 14,
+                        };
+                        if (mt === "image") return (
+                            <div style={wrapStyle}>
+                                <div style={{ fontSize: 10, letterSpacing: 3, color: "#550000", marginBottom: 8 }}>— VISUAL CLUE —</div>
+                                <img
+                                    src={mu}
+                                    alt="Clue"
+                                    style={{
+                                        width: "100%", maxHeight: 320, objectFit: "contain",
+                                        borderRadius: 8, border: "1px solid rgba(255,0,0,0.3)",
+                                        boxShadow: "0 0 20px rgba(255,0,0,0.1)",
+                                        cursor: "pointer",
+                                    }}
+                                    onClick={() => window.open(mu, "_blank")}
+                                    title="Click to open full size"
+                                />
+                            </div>
+                        );
+                        if (mt === "audio") return (
+                            <div style={wrapStyle}>
+                                <div style={{ fontSize: 10, letterSpacing: 3, color: "#550000", marginBottom: 8 }}>— AUDIO CLUE —</div>
+                                <audio
+                                    controls
+                                    src={mu}
+                                    style={{
+                                        width: "100%",
+                                        filter: "sepia(1) hue-rotate(300deg) saturate(2)",
+                                    }}
+                                />
+                            </div>
+                        );
+                        if (mt === "video") return (
+                            <div style={wrapStyle}>
+                                <div style={{ fontSize: 10, letterSpacing: 3, color: "#550000", marginBottom: 8 }}>— VIDEO CLUE —</div>
+                                <video
+                                    controls
+                                    src={mu}
+                                    style={{
+                                        width: "100%", maxHeight: 280,
+                                        borderRadius: 8, border: "1px solid rgba(255,0,0,0.3)",
+                                        boxShadow: "0 0 20px rgba(255,0,0,0.1)",
+                                    }}
+                                />
+                            </div>
+                        );
+                        return null;
+                    })()}
+
                     {/* Hint section */}
                     {clueHint && (
                         <details style={s.hintDetails}>

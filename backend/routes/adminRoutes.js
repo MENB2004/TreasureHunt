@@ -28,6 +28,7 @@ const {
     createClue,
     updateClue,
     deleteClue,
+    generateClueQR,
 } = require("../controllers/clueController");
 
 const protectAdmin = require("../middleware/adminMiddleware");
@@ -65,5 +66,7 @@ router.get("/clues", protectAdmin, getAllClues);
 router.post("/clues", protectAdmin, createClue);
 router.put("/clues/:clueId", protectAdmin, updateClue);
 router.delete("/clues/:clueId", protectAdmin, deleteClue);
+// Returns a QR code PNG whose data encodes the frontend scan URL for the clue
+router.get("/clues/:clueId/qr", protectAdmin, generateClueQR);
 
 module.exports = router;

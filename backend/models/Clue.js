@@ -12,7 +12,11 @@ const clueSchema = new mongoose.Schema({
     longitude: Number,
 
     hint: String,
-    penalty: { type: Number, default: 0 }
+    penalty: { type: Number, default: 0 },
+
+    // Media clue support
+    mediaType: { type: String, enum: ["none", "image", "audio", "video"], default: "none" },
+    mediaUrl: { type: String, default: "" },
 });
 
 module.exports = mongoose.model("Clue", clueSchema);
