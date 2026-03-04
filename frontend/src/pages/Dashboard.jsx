@@ -106,13 +106,13 @@ function Dashboard() {
     );
 
     /* ── derived values ─────────────────────────────────── */
-    const TOTAL = 10;
+    const TOTAL = 9;
     const pipsDone = team.isFinished ? TOTAL : (team.currentIndex ?? 0);
     const clueNum = (team.currentIndex ?? 0) + 1;
 
-    // Determine type by slot: 0,2,4,6=Physical | 1,3,5,7=Technical | 8,9=Final
+    // Read currentType directly from the clue's own type field (free-order sequences)
     const idx = team.currentIndex ?? 0;
-    const currentType = idx >= 8 ? "final" : idx % 2 === 0 ? "physical" : "technical";
+    const currentType = team.currentClue?.type || (idx >= 8 ? "final" : "physical");
 
     const phaseLabel = team.isFinished ? "HUNT COMPLETE"
         : currentType === "final" ? "FINAL STAGE"
@@ -123,14 +123,12 @@ function Dashboard() {
 
     const pipBg = (i) => {
         const done = i < pipsDone;
-        if (i >= 8) return done ? "#cc44ff" : "rgba(200,0,255,0.1)";
-        if (i % 2 === 1) return done ? "#44aaff" : "rgba(0,150,255,0.1)";
-        return done ? "#ff6600" : "rgba(255,100,0,0.1)";
+        if (i === 8) return done ? "#cc44ff" : "rgba(200,0,255,0.1)";
+        return done ? "#ff6600" : "rgba(255,100,0,0.08)";
     };
     const pipGlow = (i) => {
         if (i >= pipsDone) return "none";
-        if (i >= 8) return "0 0 8px #cc44ff";
-        if (i % 2 === 1) return "0 0 8px #44aaff";
+        if (i === 8) return "0 0 8px #cc44ff";
         return "0 0 8px #ff6600";
     };
 

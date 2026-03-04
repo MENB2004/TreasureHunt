@@ -110,106 +110,89 @@ exports.advanceTeam = async (req, res) => {
 const EventConfig = require("../models/EventConfig");
 const Clue = require("../models/Clue");
 
-const TOTAL_CLUES = 10;
+const TOTAL_CLUES = 9;
 const TIME_LIMIT_MS = 3 * 60 * 60 * 1000; // 3 hours
 
 // ── 10 predefined team sequences ───────────────────────────────────────────
-// Each row = one team's clue order: alternating Physical and Technical clue
-// references (1-indexed, matching seed order sorted by type+difficulty+_id).
-// Positions 8 & 9 (indices in the final overall sequence) are always the two
-// Final clues appended in startAllTeams below.
-// Format: [P-index, T-index, P-index, T-index, ...] (1-based so P6 = index 6)
+// Tokens: "Pn" = nth physical clue (1-based, sorted difficulty ASC, _id ASC)
+//         "Tn" = nth technical clue (same sort)
+//         "F"  = the single final clue
+// Each row has exactly 9 tokens: 8 P/T in any order, then "F" last.
 const TEAM_SEQUENCES = [
-    // Team 1:  P6  T3 P12 T11  P9  T8  P5  T6
-    [6, 3, 12, 11, 9, 8, 5, 6],
-    // Team 2:  P2  T9 P13 T12 P10  T9  P6  T7
-    [2, 9, 13, 12, 10, 9, 6, 7],
-    // Team 3:  P8  T1 P11 T13 P11 T10  P7  T8
-    [8, 1, 11, 13, 11, 10, 7, 8],
-    // Team 4:  P1  T5  P7  T3  P8 T11  P8  T9
-    [1, 5, 7, 3, 8, 11, 8, 9],
-    // Team 5:  P9  T7  P5  T2 P12 T12  P9 T10
-    [9, 7, 5, 2, 12, 12, 9, 10],
-    // Team 6:  P4  T4  P3  T6  P1 T13 P10 T11
-    [4, 4, 3, 6, 1, 13, 10, 11],
-    // Team 7: P10  T2  P6  T5  P2  T1 P11 T12
-    [10, 2, 6, 5, 2, 1, 11, 12],
-    // Team 8:  P5  T6  P4  T7  P3  T2 P12 T13
-    [5, 6, 4, 7, 3, 2, 12, 13],
-    // Team 9:  P3  T8  P2  T4  P4  T3 P13  T1
-    [3, 8, 2, 4, 4, 3, 13, 1],
-    // Team 10: P7 T10  P1  T1  P5  T4  P1  T5
-    [7, 10, 1, 1, 5, 4, 1, 5],
+    // Team 1:  P1 → T1 → P11 → P21 → P6 → T2 → P16 → P3 → F
+    ["P1", "T1", "P11", "P21", "P6", "T2", "P16", "P3", "F"],
+    // Team 2:  P2 → P12 → T2 → P22 → P7 → P17 → T1 → P4 → F
+    ["P2", "P12", "T2", "P22", "P7", "P17", "T1", "P4", "F"],
+    // Team 3:  P3 → P13 → P23 → T1 → P8 → P18 → P5 → T2 → F
+    ["P3", "P13", "P23", "T1", "P8", "P18", "P5", "T2", "F"],
+    // Team 4:  T2 → P4 → P14 → P24 → P9 → T1 → P19 → P6 → F
+    ["T2", "P4", "P14", "P24", "P9", "T1", "P19", "P6", "F"],
+    // Team 5:  P5 → P15 → T1 → P1 → P10 → P20 → P7 → T2 → F
+    ["P5", "P15", "T1", "P1", "P10", "P20", "P7", "T2", "F"],
+    // Team 6:  P6 → T2 → P16 → P2 → P11 → P21 → T1 → P8 → F
+    ["P6", "T2", "P16", "P2", "P11", "P21", "T1", "P8", "F"],
+    // Team 7:  P7 → P17 → P3 → T1 → P12 → T2 → P22 → P9 → F
+    ["P7", "P17", "P3", "T1", "P12", "T2", "P22", "P9", "F"],
+    // Team 8:  T1 → P8 → P18 → P4 → P13 → T2 → P23 → P10 → F
+    ["T1", "P8", "P18", "P4", "P13", "T2", "P23", "P10", "F"],
+    // Team 9:  P9 → P19 → T2 → P5 → P14 → P24 → P11 → T1 → F
+    ["P9", "P19", "T2", "P5", "P14", "P24", "P11", "T1", "F"],
+    // Team 10: P10 → P20 → P6 → T1 → P15 → T2 → P1 → P12 → F
+    ["P10", "P20", "P6", "T1", "P15", "T2", "P1", "P12", "F"],
 ];
 
 // START ALL TEAMS (global game start)
 exports.startAllTeams = async (req, res) => {
     try {
-        // Fetch clue pools sorted consistently (type + difficulty + _id so
-        // P1=physicalClues[0], P2=physicalClues[1], … T1=technicalClues[0], …)
+        // Fetch clue pools sorted by difficulty ASC, _id ASC (deterministic order)
+        // P1 = physicalClues[0] (lowest difficulty), P24 = physicalClues[23], etc.
         const physicalClues = await Clue.find({ type: "physical" }).sort({ difficulty: 1, _id: 1 });
         const technicalClues = await Clue.find({ type: "technical" }).sort({ difficulty: 1, _id: 1 });
         const finalClues = await Clue.find({ type: "final" }).sort({ difficulty: 1, _id: 1 });
 
-        // Validate pool sizes — sequences reference up to P13 / T13
-        const MIN_PHYSICAL = 13;
-        const MIN_TECHNICAL = 13;
-
-        if (physicalClues.length < MIN_PHYSICAL) {
+        // Validate pool sizes — sequences reference up to P24, T2, and F
+        if (physicalClues.length < 24) {
             return res.status(400).json({
-                message: `Need at least ${MIN_PHYSICAL} physical clues. Found: ${physicalClues.length}. Please seed more clues.`
+                message: `Need at least 24 physical clues. Found: ${physicalClues.length}. Please re-seed.`
             });
         }
-        if (technicalClues.length < MIN_TECHNICAL) {
+        if (technicalClues.length < 2) {
             return res.status(400).json({
-                message: `Need at least ${MIN_TECHNICAL} technical clues. Found: ${technicalClues.length}. Please seed more clues.`
+                message: `Need at least 2 technical clues. Found: ${technicalClues.length}. Please re-seed.`
             });
         }
-        if (finalClues.length < 2) {
-            return res.status(400).json({ message: "Need at least 2 final clues." });
+        if (finalClues.length < 1) {
+            return res.status(400).json({ message: "Need at least 1 final clue. Please re-seed." });
         }
 
-        // Only assign to teams that haven't started yet
-        // Sort by creation time so "Team 1" (first created) gets sequence[0]
+        // Only assign to teams that haven't started yet; sort by _id (creation order)
         const teams = await Team.find({ clueSequence: { $size: 0 } }).sort({ _id: 1 });
-
-        // Count already-started teams to know what sequence offset to continue from
         const alreadyStarted = await Team.countDocuments({ clueSequence: { $not: { $size: 0 } } });
 
         for (let i = 0; i < teams.length; i++) {
             const team = teams[i];
-            // Pick which predefined sequence to use (wraps around for >10 teams)
             const seqIdx = (alreadyStarted + i) % TEAM_SEQUENCES.length;
-            const rawSeq = TEAM_SEQUENCES[seqIdx]; // length 8: [P,T,P,T,P,T,P,T]
+            const tokens = TEAM_SEQUENCES[seqIdx]; // e.g. ["P1","T1","P11",…,"F"]
 
-            // rawSeq contains 1-based indices alternating Phy/Tech
-            // positions 0,2,4,6 → physical;  1,3,5,7 → technical
             const sequence = [];
-            for (let slot = 0; slot < 8; slot++) {
-                const num = rawSeq[slot] - 1;  // convert to 0-based
-                if (slot % 2 === 0) {
-                    // Physical slot
-                    const clueDoc = physicalClues[num];
-                    if (!clueDoc) {
-                        return res.status(400).json({
-                            message: `Sequence ${seqIdx + 1} references P${rawSeq[slot]} but only ${physicalClues.length} physical clues exist.`
-                        });
-                    }
-                    sequence.push(clueDoc._id);
-                } else {
-                    // Technical slot
-                    const clueDoc = technicalClues[num];
-                    if (!clueDoc) {
-                        return res.status(400).json({
-                            message: `Sequence ${seqIdx + 1} references T${rawSeq[slot]} but only ${technicalClues.length} technical clues exist.`
-                        });
-                    }
-                    sequence.push(clueDoc._id);
+            for (const tok of tokens) {
+                let clueDoc;
+                if (tok === "F") {
+                    clueDoc = finalClues[0];
+                } else if (tok.startsWith("P")) {
+                    const idx = parseInt(tok.slice(1), 10) - 1; // 1-based → 0-based
+                    clueDoc = physicalClues[idx];
+                } else if (tok.startsWith("T")) {
+                    const idx = parseInt(tok.slice(1), 10) - 1;
+                    clueDoc = technicalClues[idx];
                 }
+                if (!clueDoc) {
+                    return res.status(400).json({
+                        message: `Sequence ${seqIdx + 1} references "${tok}" but the clue does not exist in the DB. Re-seed first.`
+                    });
+                }
+                sequence.push(clueDoc._id);
             }
-            // Append the two Final clues at positions 8 & 9
-            sequence.push(finalClues[0]._id);
-            sequence.push(finalClues[1]._id);
 
             team.clueSequence = sequence;
             team.currentPhase = "active";
