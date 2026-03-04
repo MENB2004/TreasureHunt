@@ -111,41 +111,103 @@ const EventConfig = require("../models/EventConfig");
 const Clue = require("../models/Clue");
 
 const TOTAL_CLUES = 10;
-const PAIRS = 4;
-const POOL_SIZE = 8;
 const TIME_LIMIT_MS = 3 * 60 * 60 * 1000; // 3 hours
+
+// ── 10 predefined team sequences ───────────────────────────────────────────
+// Each row = one team's clue order: alternating Physical and Technical clue
+// references (1-indexed, matching seed order sorted by type+difficulty+_id).
+// Positions 8 & 9 (indices in the final overall sequence) are always the two
+// Final clues appended in startAllTeams below.
+// Format: [P-index, T-index, P-index, T-index, ...] (1-based so P6 = index 6)
+const TEAM_SEQUENCES = [
+    // Team 1:  P6  T3 P12 T11  P9  T8  P5  T6
+    [6, 3, 12, 11, 9, 8, 5, 6],
+    // Team 2:  P2  T9 P13 T12 P10  T9  P6  T7
+    [2, 9, 13, 12, 10, 9, 6, 7],
+    // Team 3:  P8  T1 P11 T13 P11 T10  P7  T8
+    [8, 1, 11, 13, 11, 10, 7, 8],
+    // Team 4:  P1  T5  P7  T3  P8 T11  P8  T9
+    [1, 5, 7, 3, 8, 11, 8, 9],
+    // Team 5:  P9  T7  P5  T2 P12 T12  P9 T10
+    [9, 7, 5, 2, 12, 12, 9, 10],
+    // Team 6:  P4  T4  P3  T6  P1 T13 P10 T11
+    [4, 4, 3, 6, 1, 13, 10, 11],
+    // Team 7: P10  T2  P6  T5  P2  T1 P11 T12
+    [10, 2, 6, 5, 2, 1, 11, 12],
+    // Team 8:  P5  T6  P4  T7  P3  T2 P12 T13
+    [5, 6, 4, 7, 3, 2, 12, 13],
+    // Team 9:  P3  T8  P2  T4  P4  T3 P13  T1
+    [3, 8, 2, 4, 4, 3, 13, 1],
+    // Team 10: P7 T10  P1  T1  P5  T4  P1  T5
+    [7, 10, 1, 1, 5, 4, 1, 5],
+];
 
 // START ALL TEAMS (global game start)
 exports.startAllTeams = async (req, res) => {
     try {
-        // Fetch clue pools
+        // Fetch clue pools sorted consistently (type + difficulty + _id so
+        // P1=physicalClues[0], P2=physicalClues[1], … T1=technicalClues[0], …)
         const physicalClues = await Clue.find({ type: "physical" }).sort({ difficulty: 1, _id: 1 });
         const technicalClues = await Clue.find({ type: "technical" }).sort({ difficulty: 1, _id: 1 });
         const finalClues = await Clue.find({ type: "final" }).sort({ difficulty: 1, _id: 1 });
 
-        if (physicalClues.length < POOL_SIZE || technicalClues.length < POOL_SIZE) {
+        // Validate pool sizes — sequences reference up to P13 / T13
+        const MIN_PHYSICAL = 13;
+        const MIN_TECHNICAL = 13;
+
+        if (physicalClues.length < MIN_PHYSICAL) {
             return res.status(400).json({
-                message: `Need at least ${POOL_SIZE} physical and ${POOL_SIZE} technical clues. Found: ${physicalClues.length}P, ${technicalClues.length}T`
+                message: `Need at least ${MIN_PHYSICAL} physical clues. Found: ${physicalClues.length}. Please seed more clues.`
+            });
+        }
+        if (technicalClues.length < MIN_TECHNICAL) {
+            return res.status(400).json({
+                message: `Need at least ${MIN_TECHNICAL} technical clues. Found: ${technicalClues.length}. Please seed more clues.`
             });
         }
         if (finalClues.length < 2) {
             return res.status(400).json({ message: "Need at least 2 final clues." });
         }
 
-        // Find all teams that haven't started yet
-        const teams = await Team.find({ clueSequence: { $size: 0 } });
+        // Only assign to teams that haven't started yet
+        // Sort by creation time so "Team 1" (first created) gets sequence[0]
+        const teams = await Team.find({ clueSequence: { $size: 0 } }).sort({ _id: 1 });
 
-        let offset = 0;
-        // Count already-started teams to continue offset rotation
+        // Count already-started teams to know what sequence offset to continue from
         const alreadyStarted = await Team.countDocuments({ clueSequence: { $not: { $size: 0 } } });
-        offset = alreadyStarted % POOL_SIZE;
 
-        for (const team of teams) {
+        for (let i = 0; i < teams.length; i++) {
+            const team = teams[i];
+            // Pick which predefined sequence to use (wraps around for >10 teams)
+            const seqIdx = (alreadyStarted + i) % TEAM_SEQUENCES.length;
+            const rawSeq = TEAM_SEQUENCES[seqIdx]; // length 8: [P,T,P,T,P,T,P,T]
+
+            // rawSeq contains 1-based indices alternating Phy/Tech
+            // positions 0,2,4,6 → physical;  1,3,5,7 → technical
             const sequence = [];
-            for (let i = 0; i < PAIRS; i++) {
-                sequence.push(physicalClues[(offset + i) % POOL_SIZE]._id);
-                sequence.push(technicalClues[(offset + i) % POOL_SIZE]._id);
+            for (let slot = 0; slot < 8; slot++) {
+                const num = rawSeq[slot] - 1;  // convert to 0-based
+                if (slot % 2 === 0) {
+                    // Physical slot
+                    const clueDoc = physicalClues[num];
+                    if (!clueDoc) {
+                        return res.status(400).json({
+                            message: `Sequence ${seqIdx + 1} references P${rawSeq[slot]} but only ${physicalClues.length} physical clues exist.`
+                        });
+                    }
+                    sequence.push(clueDoc._id);
+                } else {
+                    // Technical slot
+                    const clueDoc = technicalClues[num];
+                    if (!clueDoc) {
+                        return res.status(400).json({
+                            message: `Sequence ${seqIdx + 1} references T${rawSeq[slot]} but only ${technicalClues.length} technical clues exist.`
+                        });
+                    }
+                    sequence.push(clueDoc._id);
+                }
             }
+            // Append the two Final clues at positions 8 & 9
             sequence.push(finalClues[0]._id);
             sequence.push(finalClues[1]._id);
 
@@ -154,8 +216,6 @@ exports.startAllTeams = async (req, res) => {
             team.currentIndex = 0;
             team.startTime = new Date();
             await team.save();
-
-            offset = (offset + 1) % POOL_SIZE;
         }
 
         // Mark game as started in EventConfig (upsert)
@@ -175,6 +235,7 @@ exports.startAllTeams = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
 
 exports.pauseEvent = async (req, res) => {
     try {
