@@ -23,6 +23,7 @@ function AdminLogin() {
     return (
         <div className="login-container">
             <div className="login-box">
+                <h1 className="main-title">TREASURE<br />HUNT</h1>
                 <div className="logo-group">
                     <img
                         src="/astral.png"
@@ -31,8 +32,6 @@ function AdminLogin() {
                         onError={(e) => { e.target.style.display = "none"; }}
                     />
                 </div>
-
-                <h1 className="main-title">TREASURE<br />HUNT</h1>
 
                 <div className="admin-badge">ADMIN ACCESS</div>
 

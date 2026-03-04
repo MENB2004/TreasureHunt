@@ -23,6 +23,7 @@ function TeamLogin() {
     return (
         <div className="login-container">
             <div className="login-box">
+                <h1 className="main-title">TREASURE<br />HUNT</h1>
                 <div className="logo-group">
                     <img
                         src="/astral.png"
@@ -32,7 +33,6 @@ function TeamLogin() {
                     />
                 </div>
 
-                <h1 className="main-title">TREASURE<br />HUNT</h1>
                 <p className="sub-title">ENTER IF YOU DARE</p>
 
                 <form className="login-form" onSubmit={handleLogin}>

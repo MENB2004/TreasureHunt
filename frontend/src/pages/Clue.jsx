@@ -79,12 +79,7 @@ function AnswerRevealCard({ clueData, onSubmit, submitting, submitted }) {
                 {(clueData.type || "clue").toUpperCase()}
             </div>
 
-            {/* Question */}
-            {clueData.question && (
-                <p style={{ fontSize: 16, lineHeight: 1.7, color: "#cc3333", marginBottom: 20, textShadow: "0 0 8px rgba(255,0,0,0.3)" }}>
-                    {clueData.question}
-                </p>
-            )}
+
 
             {/* Media */}
             {clueData.mediaType && clueData.mediaType !== "none" && clueData.mediaUrl && (() => {
