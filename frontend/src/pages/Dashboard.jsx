@@ -231,11 +231,6 @@ function Dashboard() {
                         />
                     ))}
                 </div>
-                <div style={s.pipLabels}>
-                    <span style={{ color: "#ff6600", fontSize: 10, letterSpacing: 2 }}>● PHYSICAL</span>
-                    <span style={{ color: "#44aaff", fontSize: 10, letterSpacing: 2 }}>● TECHNICAL</span>
-                    <span style={{ color: "#cc44ff", fontSize: 10, letterSpacing: 2 }}>● FINAL</span>
-                </div>
                 <div style={{ fontSize: 12, color: "#555", letterSpacing: 2, marginTop: 4 }}>
                     {pipsDone} / {TOTAL} CLUES SOLVED
                 </div>

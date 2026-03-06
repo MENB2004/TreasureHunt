@@ -119,26 +119,30 @@ const TIME_LIMIT_MS = 3 * 60 * 60 * 1000; // 3 hours
 //         "F"  = the single final clue
 // Each row has exactly 9 tokens: 8 P/T in any order, then "F" last.
 const TEAM_SEQUENCES = [
-    // Team 1:  P1 → T1 → P11 → P21 → P6 → T2 → P16 → P3 → F
+    // Team 1
     ["P1", "T1", "P11", "P21", "P6", "T2", "P16", "P3", "F"],
-    // Team 2:  P2 → P12 → T2 → P22 → P7 → P17 → T1 → P4 → F
-    ["P2", "P12", "T2", "P22", "P7", "P17", "T1", "P4", "F"],
-    // Team 3:  P3 → P13 → P23 → T1 → P8 → P18 → P5 → T2 → F
-    ["P3", "P13", "P23", "T1", "P8", "P18", "P5", "T2", "F"],
-    // Team 4:  T2 → P4 → P14 → P24 → P9 → T1 → P19 → P6 → F
-    ["T2", "P4", "P14", "P24", "P9", "T1", "P19", "P6", "F"],
-    // Team 5:  P5 → P15 → T1 → P1 → P10 → P20 → P7 → T2 → F
-    ["P5", "P15", "T1", "P1", "P10", "P20", "P7", "T2", "F"],
-    // Team 6:  P6 → T2 → P16 → P2 → P11 → P21 → T1 → P8 → F
-    ["P6", "T2", "P16", "P2", "P11", "P21", "T1", "P8", "F"],
-    // Team 7:  P7 → P17 → P3 → T1 → P12 → T2 → P22 → P9 → F
-    ["P7", "P17", "P3", "T1", "P12", "T2", "P22", "P9", "F"],
-    // Team 8:  T1 → P8 → P18 → P4 → P13 → T2 → P23 → P10 → F
-    ["T1", "P8", "P18", "P4", "P13", "T2", "P23", "P10", "F"],
-    // Team 9:  P9 → P19 → T2 → P5 → P14 → P24 → P11 → T1 → F
-    ["P9", "P19", "T2", "P5", "P14", "P24", "P11", "T1", "F"],
-    // Team 10: P10 → P20 → P6 → T1 → P15 → T2 → P1 → P12 → F
-    ["P10", "P20", "P6", "T1", "P15", "T2", "P1", "P12", "F"],
+    // Team 2
+    ["P2", "P12", "T2", "P22", "P7", "P17", "T3", "P4", "F"],
+    // Team 3
+    ["P3", "P13", "P23", "T3", "P8", "P18", "P5", "T4", "F"],
+    // Team 4
+    ["T4", "P4", "P14", "P24", "P9", "T1", "P19", "P6", "F"],
+    // Team 5
+    ["P5", "P15", "T1", "P1", "P10", "P20", "P7", "T3", "F"],
+    // Team 6
+    ["P6", "T2", "P16", "P2", "P11", "P21", "T4", "P8", "F"],
+    // Team 7
+    ["P7", "P17", "P3", "T3", "P12", "T1", "P22", "P9", "F"],
+    // Team 8
+    ["T2", "P8", "P18", "P4", "P13", "T4", "P23", "P10", "F"],
+    // Team 9
+    ["P9", "P19", "T4", "P5", "P14", "P24", "P11", "T2", "F"],
+    // Team 10
+    ["P10", "P20", "P6", "T1", "P15", "T3", "P1", "P12", "F"],
+    // Team 11
+    ["P11", "P21", "T3", "P7", "P16", "T2", "P2", "P13", "F"],
+    // Team 12
+    ["P12", "T4", "P22", "P8", "P17", "T1", "P3", "P14", "F"],
 ];
 
 // START ALL TEAMS (global game start)
@@ -150,15 +154,15 @@ exports.startAllTeams = async (req, res) => {
         const technicalClues = await Clue.find({ type: "technical" }).sort({ difficulty: 1, _id: 1 });
         const finalClues = await Clue.find({ type: "final" }).sort({ difficulty: 1, _id: 1 });
 
-        // Validate pool sizes — sequences reference up to P24, T2, and F
+        // Validate pool sizes — sequences reference up to P24, T4, and F
         if (physicalClues.length < 24) {
             return res.status(400).json({
                 message: `Need at least 24 physical clues. Found: ${physicalClues.length}. Please re-seed.`
             });
         }
-        if (technicalClues.length < 2) {
+        if (technicalClues.length < 4) {
             return res.status(400).json({
-                message: `Need at least 2 technical clues. Found: ${technicalClues.length}. Please re-seed.`
+                message: `Need at least 4 technical clues. Found: ${technicalClues.length}. Please re-seed.`
             });
         }
         if (finalClues.length < 1) {
@@ -247,18 +251,30 @@ exports.resumeEvent = async (req, res) => {
 // LIVE MONITOR DATA
 exports.getLiveMonitor = async (req, res) => {
     try {
-        const teams = await Team.find().select("-password");
+        const teams = await Team.find().populate("clueSequence").select("-password");
 
-        const monitorData = teams.map(team => ({
-            teamId: team._id,
-            teamName: team.teamName,
-            phase: team.currentPhase,
-            progress: team.currentPhase === "finished" ? 10 : team.currentIndex,
-            lockedUntil: team.lockedUntil || null,
-            isLocked: team.lockedUntil && new Date() < team.lockedUntil,
-            elapsedTime: team.startTime ? Date.now() - team.startTime : 0,
-            finished: team.currentPhase === "finished"
-        }));
+        const monitorData = teams.map(team => {
+            let currentClue = null;
+            if (team.clueSequence && team.clueSequence.length > team.currentIndex && team.currentPhase === "active") {
+                const clueDoc = team.clueSequence[team.currentIndex];
+                if (clueDoc) {
+                    const { answer, ...rest } = clueDoc.toObject ? clueDoc.toObject() : clueDoc;
+                    currentClue = rest;
+                }
+            }
+
+            return {
+                teamId: team._id,
+                teamName: team.teamName,
+                phase: team.currentPhase,
+                currentClue,
+                progress: team.currentPhase === "finished" ? 10 : team.currentIndex,
+                lockedUntil: team.lockedUntil || null,
+                isLocked: team.lockedUntil && new Date() < team.lockedUntil,
+                elapsedTime: team.startTime ? Date.now() - team.startTime : 0,
+                finished: team.currentPhase === "finished"
+            };
+        });
 
         res.json(monitorData);
 

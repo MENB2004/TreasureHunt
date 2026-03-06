@@ -154,11 +154,16 @@ function AnswerRevealCard({ clueData, onSubmit, submitting, submitted }) {
 
 /* ── Main Clue / Scan page ──────────────────────────────────── */
 function Clue() {
+    const isAutoMode = !!new URLSearchParams(window.location.search).get("token");
     const [qrToken, setQrToken] = useState("");
     const [answer, setAnswer] = useState("");
     const [message, setMessage] = useState(null); // { text, type }
     const [loading, setLoading] = useState(false);
     const [useCamera, setUseCamera] = useState(false);
+
+    // Phase detection for manual mode
+    const [teamPhase, setTeamPhase] = useState(null);
+    const [fetchingPhase, setFetchingPhase] = useState(!isAutoMode);
 
     // ── Auto-reveal state (populated when URL has ?token=...) ──
     const [autoClue, setAutoClue] = useState(null);   // clue data from server
@@ -171,26 +176,33 @@ function Clue() {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const tok = params.get("token");
-        if (!tok) return;
+        if (tok) {
+            setQrToken(tok);
+            setAutoLoad(true);
 
-        setQrToken(tok);
-        setAutoLoad(true);
-
-        // Fetch full clue (including answer) from the public endpoint
-        const apiBase = import.meta.env.VITE_API_URL
-            ? `${import.meta.env.VITE_API_URL}/api`
-            : "http://localhost:5000/api";
-        fetch(`${apiBase}/game/qr-clue?token=${encodeURIComponent(tok)}`)
-            .then(async r => {
-                if (!r.ok) {
-                    const j = await r.json().catch(() => ({}));
-                    throw new Error(j.message || `Error ${r.status}`);
-                }
-                return r.json();
-            })
-            .then(data => setAutoClue(data))
-            .catch(e => setAutoErr(e.message))
-            .finally(() => setAutoLoad(false));
+            // Fetch full clue (including answer) from the public endpoint
+            const apiBase = import.meta.env.VITE_API_URL
+                ? `${import.meta.env.VITE_API_URL}/api`
+                : "http://localhost:5000/api";
+            fetch(`${apiBase}/game/qr-clue?token=${encodeURIComponent(tok)}`)
+                .then(async r => {
+                    if (!r.ok) {
+                        const j = await r.json().catch(() => ({}));
+                        throw new Error(j.message || `Error ${r.status}`);
+                    }
+                    return r.json();
+                })
+                .then(data => setAutoClue(data))
+                .catch(e => setAutoErr(e.message))
+                .finally(() => setAutoLoad(false));
+        } else {
+            API.get("/game/status").then(res => {
+                const team = res.data;
+                const idx = team.currentIndex ?? 0;
+                const cType = team.currentClue?.type || (idx >= 8 ? "final" : "physical");
+                setTeamPhase(cType);
+            }).catch(e => console.error(e)).finally(() => setFetchingPhase(false));
+        }
     }, []);
 
     /* Manual camera scan fills in the token */
@@ -229,14 +241,15 @@ function Clue() {
 
     /* Manual form submit */
     const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!answer.trim()) return;
+        if (e && e.preventDefault) e.preventDefault();
+        if (teamPhase === "technical" && !answer.trim()) return;
+        if ((teamPhase === "physical" || teamPhase === "final") && !qrToken.trim()) return;
         setLoading(true);
         setMessage(null);
         try {
             const res = await API.post("/game/submit", {
-                qrToken: qrToken.trim(),
-                answer: answer.trim(),
+                qrToken: (teamPhase === "physical" || teamPhase === "final") ? qrToken.trim() : "",
+                answer: teamPhase === "technical" ? answer.trim() : "",
             });
             setMessage({ text: "✓ " + (res.data.message || "Correct! Moving to next clue."), type: "success" });
             setAnswer(""); setQrToken("");
@@ -250,8 +263,6 @@ function Clue() {
     };
 
     /* ── Render: QR auto-reveal mode ─────────────────────────── */
-    const isAutoMode = !!new URLSearchParams(window.location.search).get("token");
-
     if (isAutoMode) {
         return (
             <div className="scan-page">
@@ -293,61 +304,86 @@ function Clue() {
     }
 
     /* ── Render: Manual scan / fallback mode ─────────────────── */
+    if (fetchingPhase) {
+        return (
+            <div className="scan-page">
+                <h1 className="scan-title">📡 LOADING...</h1>
+            </div>
+        );
+    }
+
+    const needsQR = teamPhase === "physical" || teamPhase === "final";
+    const needsAnswer = teamPhase === "technical";
+
     return (
         <div className="scan-page">
-            <h1 className="scan-title">📡 SCAN QR</h1>
-            <p className="text-dim">Scan the QR code at the clue location, then submit your answer.</p>
+            <h1 className="scan-title">{teamPhase === "technical" ? "✍️ ENTER ANSWER" : "📡 SCAN QR"}</h1>
+            <p className="text-dim">
+                {teamPhase === "technical" ? "Enter the solution for the technical challenge." : "Scan the QR code at the clue location or enter the token manually."}
+            </p>
 
             {/* QR Token section */}
-            <div className="scan-box">
-                {useCamera ? (
-                    <QRScanner onScan={handleScanSuccess} />
-                ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                        <p style={{ fontSize: "12px", color: "#555", letterSpacing: "2px", marginBottom: "4px" }}>
-                            QR TOKEN
-                        </p>
-                        <input
-                            className="answer-input"
-                            type="text"
-                            placeholder="PASTE OR SCAN QR TOKEN"
-                            value={qrToken}
-                            onChange={(e) => setQrToken(e.target.value)}
-                            autoComplete="off"
-                        />
-                        <button
-                            type="button"
-                            className="submit-btn"
-                            style={{ fontSize: "12px", padding: "10px" }}
-                            onClick={() => setUseCamera(true)}
-                        >
-                            📷 OPEN CAMERA SCANNER
-                        </button>
-                    </div>
-                )}
+            {needsQR && (
+                <div className="scan-box">
+                    {useCamera ? (
+                        <QRScanner onScan={handleScanSuccess} />
+                    ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                            <p style={{ fontSize: "12px", color: "#555", letterSpacing: "2px", marginBottom: "4px" }}>
+                                QR TOKEN
+                            </p>
+                            <input
+                                className="answer-input"
+                                type="text"
+                                placeholder="PASTE OR SCAN QR TOKEN"
+                                value={qrToken}
+                                onChange={(e) => setQrToken(e.target.value)}
+                                autoComplete="off"
+                            />
+                            <button
+                                type="button"
+                                className="submit-btn"
+                                style={{ fontSize: "12px", padding: "10px" }}
+                                onClick={() => setUseCamera(true)}
+                            >
+                                📷 OPEN CAMERA SCANNER
+                            </button>
+                        </div>
+                    )}
 
-                {qrToken && !useCamera && (
-                    <p style={{ marginTop: "10px", fontSize: "11px", color: "#00cc44", letterSpacing: "2px" }}>
-                        ✓ QR TOKEN CAPTURED
-                    </p>
-                )}
-            </div>
+                    {qrToken && !useCamera && (
+                        <p style={{ marginTop: "10px", fontSize: "11px", color: "#00cc44", letterSpacing: "2px" }}>
+                            ✓ QR TOKEN CAPTURED
+                        </p>
+                    )}
+                </div>
+            )}
 
             {/* Answer form */}
-            <form className="answer-form" onSubmit={handleSubmit}>
-                <input
-                    className="answer-input"
-                    type="text"
-                    placeholder="YOUR ANSWER"
-                    value={answer}
-                    onChange={(e) => setAnswer(e.target.value)}
-                    required
-                    autoComplete="off"
-                />
-                <button type="submit" className="submit-btn" disabled={loading}>
-                    {loading ? "SUBMITTING..." : "SUBMIT ANSWER"}
-                </button>
-            </form>
+            {needsAnswer && (
+                <form className="answer-form" onSubmit={handleSubmit}>
+                    <input
+                        className="answer-input"
+                        type="text"
+                        placeholder="YOUR ANSWER"
+                        value={answer}
+                        onChange={(e) => setAnswer(e.target.value)}
+                        required
+                        autoComplete="off"
+                    />
+                    <button type="submit" className="submit-btn" disabled={loading}>
+                        {loading ? "SUBMITTING..." : "SUBMIT ANSWER"}
+                    </button>
+                </form>
+            )}
+
+            {!needsAnswer && needsQR && (
+                <div style={{ display: "flex", justifyContent: "center", marginTop: 20 }}>
+                    <button type="button" className="submit-btn" disabled={loading || !qrToken.trim()} onClick={handleSubmit}>
+                        {loading ? "SUBMITTING..." : "SUBMIT QR TOKEN"}
+                    </button>
+                </div>
+            )}
 
             {message && (
                 <div className={`msg-box ${message.type}`}>

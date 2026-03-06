@@ -118,18 +118,19 @@ exports.submitAnswer = async (req, res) => {
             return res.status(400).json({ message: "Clue not found" });
         }
 
-        // Physical clues require QR token scan
-        if (clue.type === "physical" && clue.qrToken) {
+        // Physical/Final clues require QR token scan, Technical requires Answer
+        if (clue.type === "physical" || clue.type === "final") {
             if (!qrToken || qrToken.trim() !== clue.qrToken.trim()) {
+                team.wrongAttempts += 1;
+                await team.save();
                 return res.status(400).json({ message: "Invalid QR Token" });
             }
-        }
-
-        // Check answer (case-insensitive, trimmed)
-        if (answer.trim().toLowerCase() !== clue.answer.trim().toLowerCase()) {
-            team.wrongAttempts += 1;
-            await team.save();
-            return res.status(400).json({ message: "Wrong Answer" });
+        } else if (clue.type === "technical") {
+            if (!answer || answer.trim().toLowerCase() !== clue.answer.trim().toLowerCase()) {
+                team.wrongAttempts += 1;
+                await team.save();
+                return res.status(400).json({ message: "Wrong Answer" });
+            }
         }
 
         // ✅ Correct — log physical location if coordinates provided

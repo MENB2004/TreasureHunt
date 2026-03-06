@@ -87,9 +87,9 @@ function TeamViewModal({ teamId, onClose }) {
 
     const rows = [
         ["Team Name", team.teamName],
-        ["Current Phase", (team.currentPhase || "—").toUpperCase()],
-        ["Clue Index", `${team.currentIndex + 1} / 6`],
-        ["Progress", `${progress(team)} / 12`],
+        ["Current Phase", (team.currentPhase === "active" ? (team.currentClue?.type || "active") : (team.currentPhase || "—")).toUpperCase()],
+        ["Clue Index", `${Math.min(team.currentIndex + 1, 10)} / 10`],
+        ["Progress", `${progress(team)} / 10`],
         ["Wrong Attempts", team.wrongAttempts],
         ["Start Time", team.startTime ? new Date(team.startTime).toLocaleString() : "Not started"],
         ["Finish Time", team.finishTime ? new Date(team.finishTime).toLocaleString() : "—"],
@@ -460,16 +460,16 @@ function TeamsTab({ teams, onRefresh, onFlash }) {
                         <div key={team._id} className="team-card">
                             <div className="team-card-name">{team.teamName}</div>
 
-                            <div className="team-card-meta">Phase: <span>{(team.currentPhase || "—").toUpperCase()}</span></div>
-                            <div className="team-card-meta">Clue: <span>{team.currentIndex + 1} / 6</span></div>
-                            <div className="team-card-meta">Progress: <span>{prog} / 12</span></div>
+                            <div className="team-card-meta">Phase: <span>{(team.currentPhase === "active" ? (team.currentClue?.type || "ACTIVE") : (team.currentPhase || "—")).toUpperCase()}</span></div>
+                            <div className="team-card-meta">Clue: <span>{Math.min(team.currentIndex + 1, 10)} / 10</span></div>
+                            <div className="team-card-meta">Progress: <span>{prog} / 10</span></div>
                             {team.wrongAttempts > 0 && (
                                 <div className="team-card-meta">Wrong: <span style={{ color: "#ff8800" }}>{team.wrongAttempts}</span></div>
                             )}
 
                             {/* Progress bar */}
                             <div style={{ background: "rgba(255,0,0,0.1)", border: "1px solid rgba(255,0,0,0.2)", borderRadius: 4, height: 6, margin: "10px 0", overflow: "hidden" }}>
-                                <div style={{ height: "100%", width: `${(prog / 12) * 100}%`, background: "linear-gradient(90deg,#ff0000,#ff4400)", boxShadow: "0 0 6px #ff0000", borderRadius: 4, transition: "width .6s ease" }} />
+                                <div style={{ height: "100%", width: `${(prog / 10) * 100}%`, background: "linear-gradient(90deg,#ff0000,#ff4400)", boxShadow: "0 0 6px #ff0000", borderRadius: 4, transition: "width .6s ease" }} />
                             </div>
 
                             <div className={`team-card-status ${statusClass}`}>{statusLabel}</div>
